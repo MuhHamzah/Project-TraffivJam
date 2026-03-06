@@ -1,0 +1,33 @@
+#!/bin/bash
+# Run script for Smart Traffic Monitoring System on Linux/Mac
+
+echo "========================================"
+echo "Starting Traffic Monitoring System"
+echo "========================================"
+echo ""
+
+# Check if venv exists
+if [ ! -d "venv" ]; then
+    echo "ERROR: Virtual environment not found"
+    echo "Please run setup.sh first"
+    exit 1
+fi
+
+# Activate venv
+source venv/bin/activate
+
+# Set Flask variables
+export FLASK_APP=app.py
+export FLASK_ENV=production
+
+echo "Starting Flask server..."
+echo ""
+echo "========================================"
+echo "Access the application at:"
+echo "http://localhost:5000"
+echo "========================================"
+echo ""
+echo "Press Ctrl+C to stop the server"
+echo ""
+
+python -m flask run --host=0.0.0.0 --port=5000

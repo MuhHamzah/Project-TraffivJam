@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗺️ Traffic Maps - Smart Monitoring</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { 
+            height: 100%; 
+            width: 100%; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        
+        body {
+            background: #f5f5f5;
+        }
+        
+        #map { 
+            height: 100vh; 
+            width: 100%; 
+            background: linear-gradient(135deg, #e0e0e0 0%, #f5f5f5 100%);
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            transition: background 0.3s ease;
+        }
+        
+        /* Ensure Leaflet rendering is proper */
+        .leaflet-container {
+            background: #fff !important;
+            z-index: 1;
+        }
+        
+        .leaflet-tile-pane {
+            z-index: 2;
+        }
+        
+        .leaflet-marker-pane,
+        .leaflet-popup-pane {
+            z-index: 10;
+        }
+        
+        /* Custom marker styles */
+        .leaflet-marker-a .leaflet-marker-icon,
+        .leaflet-marker-b .leaflet-marker-icon {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        
+        .leaflet-div-icon {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px 20px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            color: white;
+        }
+        
+        .header h2 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        
+        .header p {
+            margin: 8px 0 0 0;
+            font-size: 13px;
+            opacity: 0.95;
+            line-height: 1.5;
+        }
+        
+        .info-panel {
+            position: fixed;
+            top: 85px;
+            right: 15px;
+            width: 420px;
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            padding: 18px;
+            z-index: 50;
+            max-height: calc(100vh - 115px);
+            overflow-y: auto;
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+        
+        .info-panel h3 {
+            margin: 0 0 12px 0;
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+            text-transform: uppercase;
+        }
+        
+        .location-item {
+            padding: 10px 12px;
+            margin: 8px 0;
+            background: #f5f7fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 13px;
+        }
+        
+        .location-item:hover {
+            background: #e8ebf7;
+            transform: translateX(2px);
+        }
+        
+        .location-item strong {
+            color: #667eea;
+        }
+        
+        .location-item small {
+            color: #888;
+            display: block;
+            margin-top: 4px;
+            font-size: 11px;
+        }
+        
+        .route-info {
+            background: #f8faff;
+            padding: 14px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border: 2px solid #667eea;
+            font-size: 13px;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+        }
+
+        /* Warning banner when routing falls back to OSRM or synthetic paths */
+        .route-warning {
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            justify-content: space-between;
+        }
+
+        .route-warning.fallback { background: linear-gradient(90deg,#fff3e0,#fff8e1); color:#6a4a00; border:1px solid #ffd54f }
+        .route-warning.osrm { background: linear-gradient(90deg,#e8f5e9,#f1f8f2); color:#1b5e20; border:1px solid #81c784 }
+        .route-warning.unknown { background: #f5f5f5; color:#333; border:1px solid #ddd }
+
+        .diag-btn {
+            background: transparent;
+            border: 1px solid rgba(0,0,0,0.08);
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .diag-result {
+            margin-top: 10px;
+            font-size: 12px;
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            padding: 8px;
+            border-radius: 6px;
+            max-height: 120px;
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+        
+        .route-info p {
+            margin: 8px 0;
+            color: #333;
+            line-height: 1.5;
+        }
+        
+        .route-info .distance {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 18px;
+            margin: 10px 0;
+        }
+        
+        .traffic-status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+            font-weight: 700;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            letter-spacing: 0.3px;
+        }
+        
+        .traffic-status.free {
+            background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+            color: #1b5e20;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
+        }
+        
+        .traffic-status.slow {
+            background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
+            color: #f57f17;
+            box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+        }
+        
+        .traffic-status.congested {
+            background: linear-gradient(135deg, #ffcdd2 0%, #f8bbd0 100%);
+            color: #b71c1c;
+            box-shadow: 0 2px 8px rgba(244, 67, 54, 0.25);
+            animation: pulse-congestion 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-congestion {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        
+        .marker-icons {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 16px;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            z-index: 50;
+            border: 1px solid rgba(0,0,0,0.08);
+            min-width: 320px;
+        }
+        
+        .marker-icon {
+            margin: 14px 0;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            padding: 10px 12px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            border: 2px solid transparent;
+        }
+        
+        .marker-icon:hover {
+            background: #f5f7fa;
+            transform: translateX(6px);
+            border-color: rgba(102, 126, 234, 0.2);
+        }
+
+        .marker-icon .label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            color: white;
+            font-weight: 900;
+            font-size: 20px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .marker-icon:hover .label {
+            transform: scale(1.1);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+        }
+        
+        .marker-icon.point-a .label {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            box-shadow: 0 6px 16px rgba(33, 150, 243, 0.5);
+        }
+        
+        .marker-icon.point-b .label {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            box-shadow: 0 6px 16px rgba(244, 67, 54, 0.5);
+        }
+        
+        .marker-location {
+            font-size: 12px;
+            color: #666;
+            flex: 1;
+            min-width: 120px;
+            font-weight: 500;
+        }
+
+        .route-item {
+            padding: 10px;
+            margin: 8px 0;
+            background: #f5f5f5;
+            border: 2px dashed #9C27B0;
+            border-radius: 8px;
+            font-size: 12px;
+            border-left: 5px solid #9C27B0;
+            background: linear-gradient(135deg, #f3e5f5 0%, #ede7f6 100%);
+            transition: all 0.3s ease;
+        }
+
+        .route-item:hover {
+            background: linear-gradient(135deg, #e1bee7 0%, #e0d9f0 100%);
+            border-color: #7b1fa2;
+            transform: translateX(4px);
+        }
+        
+        @media (max-width: 768px) {
+            .info-panel {
+                width: calc(100% - 30px);
+                right: 15px;
+                left: 15px;
+                top: auto;
+                bottom: 15px;
+                max-height: 240px;
+            }
+            
+            .marker-icons {
+                bottom: auto;
+                top: 85px;
+                right: auto;
+                left: 15px;
+                padding: 10px;
+            }
+        }
+    </style>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+</head>
+<body>
+    <div class="hamburger">☰</div>
+    <div class="sidebar" id="sidebar">
+        <a href="/">Home</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/maps">Maps</a>
+        <a href="/analysis">Analysis</a>
+        <a href="/data">Data Records</a>
+    </div>
+    
+    <div class="header">
+        <h2>🗺️ Smart Traffic Interactive Maps - Bogor Region</h2>
+        <p>📌 DRAG markers A & B ke lokasi apapun | 🎯 Klik di Map untuk set posisi | 🚗 Rute real-time dari OSRM (OpenStreetMap) | 🔴🔵 Warna=Traffic Status</p>
+    </div>
+    
+    <div id="map"></div>
+    <div id="routeDebug" style="position:fixed;left:12px;bottom:12px;z-index:120;background:rgba(0,0,0,0.6);color:#fff;padding:8px 10px;border-radius:8px;font-size:12px;min-width:160px;box-shadow:0 6px 18px rgba(0,0,0,0.3);">Debug: ready</div>
+    
+    <div class="info-panel">
+        <h3>📍 Lokasi CCTV Kamera</h3>
+        <div id="camerasList"></div>
+        
+        <h3 style="margin-top: 15px;">🛣️ Informasi Rute & Traffic</h3>
+        <div id="routeInfo" class="route-info">
+            <p style="text-align: center; color: #666; font-size: 12px; line-height: 1.6;">
+                <strong>📌 Cara Pakai:</strong><br>
+                1️⃣ Klik di map → Titik A (biru)<br>
+                2️⃣ Klik lagi → Titik B (merah)<br>
+                3️⃣ Drag marker untuk ubah lokasi<br><br>
+                <strong>🚦 Warna Rute:</strong><br>
+                🟢 = Lancar | 🟡 = Lambat | 🔴 = Macet
+            </p>
+        </div>
+
+        <div class="info-item">
+            <span class="info-label">🔗 Google Maps:</span>
+            <span class="info-value">
+                <a href="https://maps.app.goo.gl/vSaWh7w9YfysZLpc9" target="_blank" style="color: #0066cc; text-decoration: none; font-weight: 500;">Buka di Google Maps</a>
+            </span>
+        </div>
+    </div>
+
+    <div class="marker-icons">
+        <div class="marker-icon point-a">
+            <span class="label">A</span>
+            <span class="marker-location" id="labelA">📍 Start</span>
+        </div>
+        <div class="marker-icon point-b">
+            <span class="label">B</span>
+            <span class="marker-location" id="labelB">📍 End</span>
+        </div>
+    </div>
+
+    <script>
+        // ✅ Global variables
+        let cameraLocations = {};
+        let map;
+        let markerA, markerB;
+        let markerACircle, markerBCircle; // Visual circles for markers
+        let selectingMarker = 'A';
+        let primaryPolyline = null;
+        window.altPolylines = [];
+        
+        // Debug mode
+        const DEBUG = true;
+        function log(msg) {
+            if (DEBUG) console.log(msg);
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
+
+        async function initializeApp() {
+            log('🚀 [INIT] Starting Smart Traffic Maps initialization...');
+            try {
+                log('📡 [INIT] Waiting for DOM to be fully ready...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                log('📡 [INIT] Fetching camera locations from /api/cameras-locations...');
+                const locResponse = await fetch('/api/cameras-locations');
+                if (!locResponse.ok) throw new Error(`Locations API returned ${locResponse.status}`);
+                const locations = await locResponse.json();
+                cameraLocations = locations;
+                log(`✅ [INIT] Camera locations loaded: ${Object.keys(locations).length} cameras`);
+
+                log('🗺️  [INIT] Initializing Leaflet map...');
+                initializeMapSimple();
+                
+                log('📍 [INIT] Populating cameras list...');
+                populateCamerasList();
+                
+                log('✅ [INIT] Smart Traffic Maps fully initialized! Map should be visible now.');
+                
+                // Auto-calculate route with default markers
+                setTimeout(() => {
+                    log('🚗 [AUTO] Auto-calculating initial route...');
+                    calculateRoute();
+                }, 1000);
+                
+            } catch (error) {
+                console.error('❌ [ERROR] initialization failed:', error);
+                document.querySelector('.info-panel').innerHTML += `<div style="color:red; padding:10px; margin-top:10px; border:2px solid red; border-radius:5px;"><strong>⚠️ Error:</strong> ${error.message}</div>`;
+            }
+        }
+
+        function initializeMapSimple() {
+            try {
+                const defaultCoords = { lat: -6.601357, lng: 106.796838 };
+                log(`📍 [MAP] Creating map centered at ${defaultCoords.lat}, ${defaultCoords.lng}`);
+
+                // Create map
+                if (!document.getElementById('map')) {
+                    throw new Error('Map container #map not found in HTML!');
+                }
+                
+                map = L.map('map', {
+                    trackResize: true,
+                    preferCanvas: true
+                }).setView([defaultCoords.lat, defaultCoords.lng], 14);
+                
+                log('✅ [MAP] Leaflet map instance created');
+
+                // Add tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19,
+                    timeout: 10000
+                }).addTo(map);
+                log('✅ [MAP] OpenStreetMap tiles loaded');
+
+                // Create markers with visual customization
+                const markerAIcon = L.divIcon({
+                    html: '<div style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%); color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; box-shadow: 0 4px 12px rgba(33,150,243,0.5); border: 2px solid white;">A</div>',
+                    iconSize: [40, 40],
+                    className: 'leaflet-marker-a'
+                });
+                
+                const markerBIcon = L.divIcon({
+                    html: '<div style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; box-shadow: 0 4px 12px rgba(244,67,54,0.5); border: 2px solid white;">B</div>',
+                    iconSize: [40, 40],
+                    className: 'leaflet-marker-b'
+                });
+
+                markerA = L.marker([defaultCoords.lat - 0.005, defaultCoords.lng - 0.005], { 
+                    draggable: true,
+                    icon: markerAIcon 
+                }).addTo(map).bindPopup('📍 Point A - START\nDrag ke lokasi lain atau klik di map', { autoClose: false });
+                
+                markerB = L.marker([defaultCoords.lat + 0.005, defaultCoords.lng + 0.005], { 
+                    draggable: true,
+                    icon: markerBIcon 
+                }).addTo(map).bindPopup('📍 Point B - END\nDrag ke lokasi lain atau klik di map', { autoClose: false });
+
+                log('✅ [MAP] Markers A and B created');
+
+                // Add visual circles around markers
+                markerACircle = L.circle([defaultCoords.lat - 0.005, defaultCoords.lng - 0.005], {
+                    color: '#2196F3', fillColor: '#2196F3', fillOpacity: 0.1, radius: 200
+                }).addTo(map);
+                
+                markerBCircle = L.circle([defaultCoords.lat + 0.005, defaultCoords.lng + 0.005], {
+                    color: '#f44336', fillColor: '#f44336', fillOpacity: 0.1, radius: 200
+                }).addTo(map);
+
+                // Add clickable camera markers so users can set A or B directly from camera icons
+                try {
+                    window.cameraMapMarkers = [];
+                    Object.keys(cameraLocations).forEach((ck) => {
+                        const loc = cameraLocations[ck];
+                        if (!loc || !loc.lat || !loc.lng) return;
+
+                        const camMarker = L.circleMarker([loc.lat, loc.lng], {
+                            radius: 6,
+                            color: '#444',
+                            fillColor: '#ffcc00',
+                            fillOpacity: 0.95,
+                            weight: 1
+                        }).addTo(map);
+
+                        // Create a small popup with Set A / Set B buttons
+                        const popupHtml = `<div style="font-size:13px"><strong>${loc.name || 'Camera'}</strong><br/><small>${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</small><br/><div style=\"margin-top:6px;display:flex;gap:6px\"><button id=\"setA_${ck}\" style=\"padding:6px 8px;border-radius:6px;background:#2196F3;color:#fff;border:none;cursor:pointer\">Set A</button><button id=\"setB_${ck}\" style=\"padding:6px 8px;border-radius:6px;background:#f44336;color:#fff;border:none;cursor:pointer\">Set B</button></div></div>`;
+                        camMarker.bindPopup(popupHtml);
+
+                        camMarker.on('popupopen', () => {
+                            // Attach handlers after popup is in DOM
+                            setTimeout(() => {
+                                const btnA = document.getElementById(`setA_${ck}`);
+                                const btnB = document.getElementById(`setB_${ck}`);
+                                if (btnA) btnA.onclick = () => {
+                                    markerA.setLatLng([loc.lat, loc.lng]);
+                                    markerACircle.setLatLng([loc.lat, loc.lng]);
+                                    updateMarkerLabel('A');
+                                    calculateRoute();
+                                };
+                                if (btnB) btnB.onclick = () => {
+                                    markerB.setLatLng([loc.lat, loc.lng]);
+                                    markerBCircle.setLatLng([loc.lat, loc.lng]);
+                                    updateMarkerLabel('B');
+                                    calculateRoute();
+                                };
+                            }, 50);
+                        });
+
+                        window.cameraMapMarkers.push(camMarker);
+                    });
+                } catch (e) {
+                    console.warn('Error adding camera markers', e);
+                }
+
+                updateMarkerLabel('A');
+                updateMarkerLabel('B');
+
+                // Map click handler - alternate between setting A and B
+                map.on('click', (e) => {
+                    log(`🖱️  [MAP] Clicked at ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`);
+                    if (selectingMarker === 'A') {
+                        markerA.setLatLng(e.latlng);
+                        markerACircle.setLatLng(e.latlng);
+                        updateMarkerLabel('A');
+                        log('📍 [MAP] Set Point A');
+                        selectingMarker = 'B';
+                    } else {
+                        markerB.setLatLng(e.latlng);
+                        markerBCircle.setLatLng(e.latlng);
+                        updateMarkerLabel('B');
+                        log('📍 [MAP] Set Point B');
+                        selectingMarker = 'A';
+                    }
+                    setTimeout(() => calculateRoute(), 300);
+                });
+
+                // Marker drag handlers
+                markerA.on('dragend', () => { 
+                    log('🚀 [DRAG] Point A moved');
+                    markerACircle.setLatLng(markerA.getLatLng());
+                    updateMarkerLabel('A'); 
+                    calculateRoute(); 
+                });
+                
+                markerB.on('dragend', () => { 
+                    log('🚀 [DRAG] Point B moved');
+                    markerBCircle.setLatLng(markerB.getLatLng());
+                    updateMarkerLabel('B'); 
+                    calculateRoute(); 
+                });
+
+                // Fix initial map sizing
+                setTimeout(() => {
+                    map.invalidateSize();
+                    log('✅ [MAP] Map view invalidated/refreshed');
+                }, 300);
+
+                log('✅ [MAP] Map initialization complete!');
+            } catch (error) {
+                console.error('❌ [MAP ERROR]:', error);
+                throw error;
+            }
+        }
+
+        function updateMarkerLabel(marker) {
+            const lbl = marker === 'A' ? markerA : markerB;
+            const labelEl = marker === 'A' ? document.getElementById('labelA') : document.getElementById('labelB');
+            if (labelEl && lbl) {
+                const pos = lbl.getLatLng();
+                const coordText = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
+                labelEl.textContent = coordText;
+                log(`📍 [LABEL] Point ${marker} updated: ${coordText}`);
+            }
+        }
+
+        async function calculateRoute() {
+            if (!markerA || !markerB) {
+                log('⚠️  [ROUTE] Markers not ready yet');
+                return;
+            }
+            try {
+                const origin = markerA.getLatLng();
+                const destination = markerB.getLatLng();
+                
+                log(`🚗 [ROUTE] Calculating route from A to B...`);
+                log(`  Origin (A):      ${origin.lat.toFixed(6)}, ${origin.lng.toFixed(6)}`);
+                log(`  Destination (B): ${destination.lat.toFixed(6)}, ${destination.lng.toFixed(6)}`);
+
+                const requestBody = {
+                    origin: { lat: origin.lat, lng: origin.lng },
+                    destination: { lat: destination.lat, lng: destination.lng }
+                };
+                
+                log(`📤 [ROUTE] Sending request to /api/routes...`);
+
+                const response = await fetch('/api/routes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Route API error: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                log(`✅ [ROUTE] Got response from API:`, data);
+                
+                if (data.error) {
+                    throw new Error(`API returned error: ${data.error}`);
+                }
+                
+                drawRoutes(data);
+            } catch (error) {
+                console.error('❌ [ROUTE ERROR]:', error);
+                document.getElementById('routeInfo').innerHTML = `<div style="color: red; padding: 10px; border: 2px solid red; border-radius: 5px;"><strong>❌ Route Error:</strong><br>${error.message}</div>`;
+            }
+        }
+
+        function drawRoutes(data) {
+            try {
+                log('🎨 [DRAW] Starting to draw routes...');
+                
+                // Remove old routes
+                if (primaryPolyline) {
+                    map.removeLayer(primaryPolyline);
+                    log('🗑️  [DRAW] Removed old primary polyline');
+                }
+                window.altPolylines.forEach(p => {
+                    try { map.removeLayer(p); } catch(e) {}
+                });
+                window.altPolylines = [];
+
+                if (!data.primary_route) {
+                    log('⚠️  [DRAW] No primary route in data');
+                    return;
+                }
+
+                log(`📍 [DRAW] Primary route data:`, data.primary_route);
+
+                const colors = { 
+                    'free': '#2e7d32',      // Green
+                    'slow': '#f57f17',      // Yellow/Orange  
+                    'congested': '#b71c1c'  // Red
+                };
+                
+                const primaryColor = colors[data.primary_route.traffic_status] || '#2196F3';
+                const polylineStr = data.primary_route.polyline || '';
+                
+                log(`🎯 [DRAW] Polyline length: ${polylineStr.length} chars`);
+
+                const primaryPath = decodePolyline(polylineStr);
+                log(`🎯 [DRAW] Decoded polyline into ${primaryPath.length} points`);
+                // Update on-screen debug box so users can see polyline length / points
+                try {
+                    const dbg = document.getElementById('routeDebug');
+                    if (dbg) dbg.textContent = `Polyline chars: ${polylineStr.length} | Decoded points: ${primaryPath.length}`;
+                } catch(e){ }
+                
+                if (primaryPath.length > 0) {
+                    primaryPolyline = L.polyline(primaryPath, { 
+                        color: primaryColor, 
+                        weight: 5,
+                        opacity: 0.9,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(map);
+                    
+                    log(`✅ [DRAW] Primary route drawn (${primaryPath.length} points) - Color: ${primaryColor}`);
+                    
+                    // Fit map to route
+                    const bounds = primaryPolyline.getBounds();
+                    if (bounds.isValid()) {
+                        map.fitBounds(bounds.pad(0.1));
+                        log('🎯 [DRAW] Map fitted to route bounds');
+                    }
+                } else {
+                    log('❌ [DRAW] Primary path is empty after decoding!');
+                }
+
+                // Draw alternative routes
+                if (data.alternative_routes && data.alternative_routes.length > 0) {
+                    log(`📍 [DRAW] Drawing ${data.alternative_routes.length} alternative routes...`);
+                    
+                    data.alternative_routes.forEach((alt, idx) => {
+                        try {
+                            const altPath = decodePolyline(alt.polyline || '');
+                            const altColor = colors[alt.traffic_status] || '#9C27B0';
+                            
+                            if (altPath.length > 0) {
+                                const poly = L.polyline(altPath, { 
+                                    color: altColor, 
+                                    weight: 2, 
+                                    opacity: 0.5, 
+                                    dashArray: '8,4'
+                                }).addTo(map);
+                                window.altPolylines.push(poly);
+                                log(`✅ [DRAW] Alternative route ${idx+1} drawn (${altPath.length} points) - Color: ${altColor}`);
+                            }
+                        } catch(e) {
+                            log(`❌ [DRAW] Error drawing alt route ${idx}:`, e);
+                        }
+                    });
+                }
+
+                // Update info panel
+                const routeInfo = document.getElementById('routeInfo');
+                if (routeInfo && data.primary_route) {
+                    const distance = data.primary_route.distance_text || 'N/A';
+                    const duration = data.primary_route.duration_text || 'N/A';
+                    const traffic = data.primary_route.traffic_status || 'unknown';
+                    const trafficColor = colors[traffic] || '#333';
+                    
+                    // Show clear banner when source is not Google
+                    const source = (data.source || 'unknown');
+                    let bannerHTML = '';
+                    if (source !== 'google') {
+                        const bannerClass = (source === 'fallback') ? 'fallback' : (source === 'osrm' ? 'osrm' : 'unknown');
+                        bannerHTML = `<div class="route-warning ${bannerClass}"><div><strong>⚠️ Routing notice:</strong> Routes provided by <strong>${source.toUpperCase()}</strong>. Results may be approximate. To diagnose, click:</div><div><button id="runDiagBtn" class="diag-btn">Run Diagnostics</button></div></div>`;
+                    }
+
+                    routeInfo.innerHTML = `${bannerHTML}
+                        <p><strong>✅ RUTE DITEMUKAN!</strong></p>
+                        <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
+                            <p>🚗 <strong>Jarak:</strong> ${distance}</p>
+                            <p>⏱️ <strong>Waktu:</strong> ${duration}</p>
+                            <p>🚦 <strong>Status Lalu Lintas:</strong> <span style="color: ${trafficColor}; font-weight: bold; text-transform: uppercase;">${traffic}</span></p>
+                            <p style="font-size: 11px; color: #666; margin-top: 10px;">Source: ${source}</p>
+                            <div id="diagResultContainer"></div>
+                        </div>
+                    `;
+
+                    // Attach diagnostics handler if button exists
+                    const diagBtn = document.getElementById('runDiagBtn');
+                    if (diagBtn) {
+                        diagBtn.onclick = async () => {
+                            try {
+                                diagBtn.disabled = true;
+                                diagBtn.textContent = 'Running...';
+                                const resp = await fetch('/api/diagnostics');
+                                const j = await resp.json();
+                                const out = JSON.stringify(j, null, 2);
+                                const cont = document.getElementById('diagResultContainer');
+                                if (cont) cont.innerHTML = `<div class="diag-result">${out}</div>`;
+                            } catch (e) {
+                                const cont = document.getElementById('diagResultContainer');
+                                if (cont) cont.innerHTML = `<div class="diag-result">Error: ${e.message}</div>`;
+                            } finally {
+                                diagBtn.disabled = false;
+                                diagBtn.textContent = 'Run Diagnostics';
+                            }
+                        };
+                    }
+                    log(`✅ [DRAW] Info panel updated`);
+                }
+
+                log('✅ [DRAW] All routes drawn successfully!');
+            } catch (error) {
+                console.error('❌ [DRAW ERROR]:', error);
+                document.getElementById('routeInfo').innerHTML = `<div style="color: red;"><strong>❌ Draw Error:</strong> ${error.message}</div>`;
+            }
+        }
+
+        function decodePolyline(encoded) {
+            if (!encoded) {
+                log('⚠️  [DECODE] Empty encoded polyline');
+                return [];
+            }
+            
+            try {
+                let points = [];
+                let index = 0, lat = 0, lng = 0;
+
+                while (index < encoded.length) {
+                    let result = 0, shift = 0, b;
+                    do {
+                        b = encoded.charCodeAt(index++) - 63;
+                        result |= (b & 0x1f) << shift;
+                        shift += 5;
+                    } while (b >= 0x20);
+                    lat += ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+                    result = 0, shift = 0;
+                    do {
+                        b = encoded.charCodeAt(index++) - 63;
+                        result |= (b & 0x1f) << shift;
+                        shift += 5;
+                    } while (b >= 0x20);
+                    lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
+
+                    points.push(L.latLng(lat / 1e5, lng / 1e5));
+                }
+                log(`✅ [DECODE] Successfully decoded ${points.length} points from polyline`);
+                return points;
+            } catch (error) {
+                console.error('❌ [DECODE ERROR]:', error);
+                return [];
+            }
+        }
+
+        function populateCamerasList() {
+            const list = document.getElementById('camerasList');
+            if (!list) {
+                log('⚠️  [CAMERAS] camerasList element not found');
+                return;
+            }
+            
+            list.innerHTML = '';
+            log(`📍 [CAMERAS] Adding ${Object.keys(cameraLocations).length} camera locations to list...`);
+            
+            Object.keys(cameraLocations).forEach((key, idx) => {
+                const loc = cameraLocations[key];
+                const item = document.createElement('div');
+                item.className = 'location-item';
+                item.innerHTML = `<strong>📹 ${idx + 1}. ${loc.name}</strong><small>📍 ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}</small>`;
+                item.addEventListener('click', () => {
+                    log(`🎯 [CAMERAS] Clicked on camera: ${loc.name}`);
+                    markerA.setLatLng([loc.lat, loc.lng]);
+                    markerACircle.setLatLng([loc.lat, loc.lng]);
+                    updateMarkerLabel('A');
+                    calculateRoute();
+                });
+                item.style.cursor = 'pointer';
+                list.appendChild(item);
+                log(`  ✅ Added camera: ${loc.name}`);
+            });
+        }
+    </script>
+    </body>
+</html>

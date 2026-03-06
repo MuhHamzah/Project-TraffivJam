@@ -1,0 +1,124 @@
+╔════════════════════════════════════════════════════════════════════╗
+║     Smart Traffic Monitoring System - QUICK START GUIDE             ║
+╚════════════════════════════════════════════════════════════════════╝
+
+UNTUK WINDOWS:
+═════════════
+
+1. Double-click file "setup.bat"
+   ✓ Akan menginstall Python packages otomatis
+
+2. Edit file "templates/maps.html"
+   ✓ Cari: key=YOUR_GOOGLE_MAPS_API_KEY
+   ✓ Ganti dengan API key Anda dari Google Cloud
+   (Cara dapat API key: lihat INSTALL.md)
+
+3. Double-click file "run.bat"
+   ✓ Aplikasi mulai running
+
+4. Buka browser: http://localhost:5000
+   ✓ Selesai! Aplikasi siap digunakan
+
+
+UNTUK LINUX/MAC:
+════════════════
+
+1. Buka terminal di folder ini
+
+2. Jalankan: chmod +x setup.sh run.sh
+
+3. Jalankan: ./setup.sh
+   ✓ Akan menginstall Python packages otomatis
+
+4. Edit file: templates/maps.html
+   ✓ Cari: key=YOUR_GOOGLE_MAPS_API_KEY
+   ✓ Ganti dengan API key Anda
+
+5. Jalankan: ./run.sh
+   ✓ Aplikasi mulai running
+
+6. Buka browser: http://localhost:5000
+   ✓ Selesai!
+
+
+HALAMAN-HALAMAN APLIKASI:
+═════════════════════════
+
+Home (/):
+  - Lihat live CCTV dari 3 lokasi
+  - Lihat statistik per-menit (cars, bikes, buses, trucks)
+  - Download data CSV
+
+Dashboard (/dashboard):
+  - Overview statistik semua lokasi
+  - Perbandingan traffic hari ini
+  - Grafik tren 7 hari terakhir
+
+Maps (/maps):
+  - Peta dengan marker A dan B
+  - Drag marker untuk lihat rute
+  - Integrasi Google Maps
+
+Analysis (/analysis):
+  - Chart per-menit traffic
+  - Chart daily summary
+  - Perbandingan antar CCTV
+
+Data Records (/data):
+  - Lihat data dalam tabel
+  - Download CSV per lokasi
+
+
+SISTEM DATA:
+════════════
+
+Data otomatis tersimpan di folder "data/" dengan struktur:
+
+data/
+├── jembatan_merah/
+│   ├── per_minute.csv    (setiap menit)
+│   └── daily.csv         (agregasi per hari)
+├── jl_djuanda/
+│   ├── per_minute.csv
+│   └── daily.csv
+└── stasiun_bogor/
+    ├── per_minute.csv
+    └── daily.csv
+
+
+TROUBLESHOOTING:
+═════════════════
+
+❌ "Python not found":
+   → Download dari python.org, pastikan check "Add to PATH"
+
+❌ Video tidak muncul:
+   → Pastikan internet normal
+   → Cek URL CCTV sudah benar
+
+❌ Maps page blank:
+   → Google Maps API key belum ditambahkan atau salah
+   → Edit templates/maps.html, update API key
+
+❌ Deteksi kendaraan tidak ada:
+   → Tunggu 1-2 menit saat pertama kali startup
+   → Pastikan ada traffic di kamera
+
+
+UNTUK BANTUAN LEBIH LENGKAP:
+═════════════════════════════
+
+Baca file:
+- README.md   (deskripsi lengkap)
+- INSTALL.md  (setup detail & troubleshooting)
+
+Atau akses health check:
+  http://localhost:5000/api/health
+
+
+═════════════════════════════════════════════════════════════════════
+
+Aplikasi siap digunakan! 🚀
+Akses: http://localhost:5000
+
+═════════════════════════════════════════════════════════════════════

@@ -1,0 +1,473 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="hamburger">☰</div>
+    <div class="sidebar" id="sidebar">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/maps">Maps</a>
+      <a href="/analysis">Analysis</a>
+      <a href="/data">Data Records</a>
+    </div>
+    <div class="content">
+      <h1>📊 Traffic Dashboard</h1>
+      <p>Real-time overview of all monitoring locations</p>
+
+      <div style="margin-bottom: 30px">
+        <h3>Real-time Per-Minute Records</h3>
+        <div
+          style="
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+          "
+          id="perMinuteRecords"
+        >
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px">
+        <h3>🎛️ Detection Control</h3>
+        <div
+          style="
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+          "
+          id="detectionControl"
+        >
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px">
+        <h3>Camera Status</h3>
+        <div
+          style="
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+          "
+          id="cameraStatus"
+        >
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px">
+        <h3>Today's Total Traffic Comparison</h3>
+        <div class="chart-container">
+          <canvas id="chartTodayComparison"></canvas>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px">
+        <h3>Traffic Trends (Last 7 Days)</h3>
+        <div class="chart-container">
+          <canvas id="chartTrends"></canvas>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 30px">
+        <h3>Traffic Statistics Summary</h3>
+        <div
+          style="
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+          "
+        >
+          <div
+            style="
+              background: #3498db;
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+              text-align: center;
+            "
+          >
+            <div style="font-size: 14px; opacity: 0.9">
+              Total Vehicles (Today)
+            </div>
+            <div
+              id="totalVehicles"
+              style="font-size: 32px; font-weight: bold; margin-top: 10px"
+            >
+              0
+            </div>
+          </div>
+          <div
+            style="
+              background: #2ecc71;
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+              text-align: center;
+            "
+          >
+            <div style="font-size: 14px; opacity: 0.9">Busiest Location</div>
+            <div
+              id="busiestLocation"
+              style="font-size: 20px; font-weight: bold; margin-top: 10px"
+            >
+              -
+            </div>
+          </div>
+          <div
+            style="
+              background: #e74c3c;
+              color: white;
+              padding: 20px;
+              border-radius: 8px;
+              text-align: center;
+            "
+          >
+            <div style="font-size: 14px; opacity: 0.9">Avg Speed</div>
+            <div
+              id="avgSpeed"
+              style="font-size: 24px; font-weight: bold; margin-top: 10px"
+            >
+              0 km/h
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const cams = {{ cameras|tojson }};
+      let chartComparison, chartTrends;
+
+      async function fetchCameraStatus(){
+        const res = await fetch('/api/camera-status');
+        return await res.json();
+      }
+
+      async function updateCameraStatus(){
+        const status = await fetchCameraStatus();
+        const statusDiv = document.getElementById('cameraStatus');
+        statusDiv.innerHTML = '';
+
+        for (const cam of cams){
+          const camStatus = status[cam.id] || {status: 'initializing', last_frame_time: null};
+          const isOnline = camStatus.status === 'online';
+          const lastFrame = camStatus.last_frame_time ? new Date(camStatus.last_frame_time * 1000).toLocaleTimeString() : 'Never';
+
+          const card = document.createElement('div');
+          card.style.cssText = `background:${isOnline ? '#d4edda' : '#f8d7da'};color:${isOnline ? '#155724' : '#721c24'};padding:15px;border-radius:8px;border-left:4px solid ${isOnline ? '#28a745' : '#dc3545'}`;
+          card.innerHTML = `
+            <div style="font-weight:bold;margin-bottom:8px">${cam.name}</div>
+            <div style="font-size:14px">
+              <div>Status: <strong>${isOnline ? '🟢 Online' : '🔴 Offline'}</strong></div>
+              <div>Last Frame: <strong>${lastFrame}</strong></div>
+            </div>
+          `;
+          statusDiv.appendChild(card);
+        }
+      }
+
+      async function startDetection(cameraId){
+        try {
+          const res = await fetch(`/api/detection/start/${cameraId}`, { method: 'POST' });
+          const data = await res.json();
+          if (data.status === 'success'){
+            updateDetectionControl();
+            console.log(`Detection started for ${cameraId}`);
+          }
+        } catch(e){
+          console.error('Error starting detection:', e);
+        }
+      }
+
+      async function stopDetection(cameraId){
+        try {
+          const res = await fetch(`/api/detection/stop/${cameraId}`, { method: 'POST' });
+          const data = await res.json();
+          if (data.status === 'success'){
+            updateDetectionControl();
+            console.log(`Detection stopped for ${cameraId}`);
+          }
+        } catch(e){
+          console.error('Error stopping detection:', e);
+        }
+      }
+
+      async function updateDetectionControl(){
+        const container = document.getElementById('detectionControl');
+        container.innerHTML = '';
+
+        for (const cam of cams){
+          try {
+            const res = await fetch(`/api/detection/status/${cam.id}`);
+            const data = await res.json();
+
+            const card = document.createElement('div');
+            const isEnabled = data.detection_enabled;
+            const bgColor = isEnabled ? '#d4edda' : '#fff3cd';
+            const borderColor = isEnabled ? '#28a745' : '#ffc107';
+
+            card.style.cssText = `background:${bgColor};border-left:4px solid ${borderColor};padding:15px;border-radius:8px`;
+            card.innerHTML = `
+              <div style="font-weight:bold;margin-bottom:12px;color:#333">${cam.name}</div>
+              <div style="display:flex;gap:10px;margin-bottom:8px">
+                <button onclick="startDetection('${cam.id}')" style="flex:1;padding:8px;background:#28a745;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;opacity:${isEnabled ? '0.5' : '1'};pointer-events:${isEnabled ? 'none' : 'auto'}">▶ Start</button>
+                <button onclick="stopDetection('${cam.id}')" style="flex:1;padding:8px;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;opacity:${!isEnabled ? '0.5' : '1'};pointer-events:${!isEnabled ? 'none' : 'auto'}">⏹ Stop</button>
+              </div>
+              <div style="text-align:center;font-size:13px;font-weight:bold;color:${isEnabled ? '#155724' : '#856404'}">
+                ${isEnabled ? '🟢 Detection Active' : '🟡 Detection Paused'}
+              </div>
+            `;
+            container.appendChild(card);
+          } catch(e){
+            console.error('Error fetching detection status:', e);
+          }
+        }
+      }
+
+      async function fetchLatestMinute(camId){
+        const res = await fetch(`/api/minute/${camId}`);
+        const data = await res.json();
+        return data.length > 0 ? data[data.length-1] : null;
+      }
+
+      async function updatePerMinuteRecords(){
+        const container = document.getElementById('perMinuteRecords');
+        container.innerHTML = '';
+
+        for (const cam of cams){
+          const latestMinute = await fetchLatestMinute(cam.id);
+          const card = document.createElement('div');
+          card.style.cssText = 'background:#fff;border:1px solid #ddd;border-radius:8px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,0.1)';
+
+          if (latestMinute){
+            const timestamp = new Date(latestMinute.timestamp).toLocaleString('id-ID');
+            const total = latestMinute.cars + latestMinute.motorbikes + latestMinute.buses + latestMinute.trucks;
+            card.innerHTML = `
+              <div style="margin-bottom:15px;border-bottom:2px solid #667eea;padding-bottom:10px">
+                <h4 style="margin:0;color:#667eea">${cam.name}</h4>
+                <div style="font-size:12px;color:#7f8c8d">⏰ ${timestamp}</div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:14px">
+                <div style="background:#e3f2fd;padding:10px;border-radius:5px">
+                  <div style="color:#1976d2;font-weight:bold">🚗 Cars</div>
+                  <div style="font-size:20px;color:#1976d2">${latestMinute.cars}</div>
+                </div>
+                <div style="background:#e8f5e9;padding:10px;border-radius:5px">
+                  <div style="color:#388e3c;font-weight:bold">🏍️ Bikes</div>
+                  <div style="font-size:20px;color:#388e3c">${latestMinute.motorbikes}</div>
+                </div>
+                <div style="background:#fff3e0;padding:10px;border-radius:5px">
+                  <div style="color:#f57c00;font-weight:bold">🚌 Buses</div>
+                  <div style="font-size:20px;color:#f57c00">${latestMinute.buses}</div>
+                </div>
+                <div style="background:#fce4ec;padding:10px;border-radius:5px">
+                  <div style="color:#c2185b;font-weight:bold">🚚 Trucks</div>
+                  <div style="font-size:20px;color:#c2185b">${latestMinute.trucks}</div>
+                </div>
+              </div>
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;color:#555">
+                <div><strong>Total:</strong> ${total} vehicles</div>
+                <div><strong>Avg Speed:</strong> ${latestMinute.avg_speed_kmh || 0} km/h</div>
+              </div>
+            `;
+          } else {
+            card.innerHTML = `
+              <div style="color:#95a5a6;padding:20px;text-align:center">
+                <div style="font-weight:bold;margin-bottom:5px">${cam.name}</div>
+                <div style="font-size:14px">⏳ Waiting for first detection...</div>
+              </div>
+            `;
+          }
+          container.appendChild(card);
+        }
+      }
+
+      async function fetchDaily(camId){
+        const res = await fetch(`/api/daily/${camId}`);
+        return await res.json();
+      }
+
+      async function loadStats(){
+        const grid = document.getElementById('statsGrid');
+        grid.innerHTML = '';
+
+        let totalAll = 0;
+        let maxTotal = 0;
+        let busiestCam = '';
+        let totalSpeed = 0;
+        let speedCount = 0;
+
+        for (const cam of cams){
+          const latest = await fetchLatestMinute(cam.id);
+          const card = document.createElement('div');
+          card.className = 'stat-card';
+
+          if (latest){
+            const total = latest.cars + latest.motorbikes + latest.buses + latest.trucks;
+            totalAll += total;
+            if (total > maxTotal) {
+              maxTotal = total;
+              busiestCam = cam.name;
+            }
+            if (latest.avg_speed_kmh) {
+              totalSpeed += latest.avg_speed_kmh;
+              speedCount++;
+            }
+            card.innerHTML = `
+              <div style="padding:20px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+                <h3 style="margin:0 0 15px 0;color:#2c3e50">${cam.name}</h3>
+                <div style="font-size:28px;font-weight:bold;color:#3498db;margin:10px 0">${total}</div>
+                <div style="font-size:14px;color:#7f8c8d">Last Minute Total</div>
+                <hr style="border:none;border-top:1px solid #ecf0f1;margin:15px 0">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
+                  <div>🚗 Cars: <strong>${latest.cars}</strong></div>
+                  <div>🏍️ Bikes: <strong>${latest.motorbikes}</strong></div>
+                  <div>🚌 Buses: <strong>${latest.buses}</strong></div>
+                  <div>🚚 Trucks: <strong>${latest.trucks}</strong></div>
+                </div>
+                <div style="margin-top:10px;font-size:13px;color:#95a5a6">Speed: ${latest.avg_speed_kmh} km/h</div>
+              </div>
+            `;
+          } else {
+            card.innerHTML = `
+              <div style="padding:20px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+                <h3 style="margin:0 0 15px 0;color:#2c3e50">${cam.name}</h3>
+                <div style="color:#95a5a6">No data yet. Waiting for first detection...</div>
+              </div>
+            `;
+          }
+          grid.appendChild(card);
+        }
+
+        // Update summary stats
+        document.getElementById('totalVehicles').textContent = totalAll;
+        document.getElementById('busiestLocation').textContent = busiestCam || '-';
+        const avgSpd = speedCount > 0 ? (totalSpeed / speedCount).toFixed(1) : 0;
+        document.getElementById('avgSpeed').textContent = avgSpd + ' km/h';
+      }
+
+      async function drawTodayComparison(){
+        const promises = cams.map(c => fetchDaily(c.id));
+        const allData = await Promise.all(promises);
+
+        const today = new Date().toISOString().split('T')[0];
+        const todayData = {};
+
+        cams.forEach((c, i) => {
+          const camData = allData[i].find(d => d.date === today);
+          todayData[c.id] = {
+            cars: camData ? camData.cars : 0,
+            motorbikes: camData ? camData.motorbikes : 0,
+            buses: camData ? camData.buses : 0,
+            trucks: camData ? camData.trucks : 0
+          };
+        });
+
+        if (chartComparison) chartComparison.destroy();
+        const ctx = document.getElementById('chartTodayComparison').getContext('2d');
+        chartComparison = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: cams.map(c => c.name),
+            datasets: [
+              {label: '🚗 Cars', data: cams.map(c => todayData[c.id].cars), backgroundColor: 'rgba(0,102,204,0.8)', borderColor: 'rgba(0,102,204,1)', borderWidth: 1},
+              {label: '🏍️ Motorbikes', data: cams.map(c => todayData[c.id].motorbikes), backgroundColor: 'rgba(0,176,80,0.8)', borderColor: 'rgba(0,176,80,1)', borderWidth: 1},
+              {label: '🚌 Buses', data: cams.map(c => todayData[c.id].buses), backgroundColor: 'rgba(255,165,0,0.8)', borderColor: 'rgba(255,165,0,1)', borderWidth: 1},
+              {label: '🚚 Trucks', data: cams.map(c => todayData[c.id].trucks), backgroundColor: 'rgba(192,0,0,0.8)', borderColor: 'rgba(192,0,0,1)', borderWidth: 1}
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {position: 'top', labels: {font: {size: 12}, padding: 15}},
+              title: {display: false}
+            },
+            scales: {
+              y: {beginAtZero: true, stacked: false, ticks: {stepSize: 100}},
+              x: {stacked: false}
+            }
+          }
+        });
+      }
+
+      async function drawTrends(){
+        const promises = cams.map(c => fetchDaily(c.id));
+        const allData = await Promise.all(promises);
+
+        // Get last 7 days
+        const dateMap = {};
+        cams.forEach((c, i) => {
+          allData[i].slice(-7).forEach(d => {
+            if (!dateMap[d.date]) dateMap[d.date] = {};
+            dateMap[d.date][c.id] = d.total || 0;
+          });
+        });
+
+        const labels = Object.keys(dateMap).sort();
+        const colors = ['rgba(0,102,204,1)', 'rgba(0,176,80,1)', 'rgba(255,165,0,1)', 'rgba(192,0,0,1)', 'rgba(112,48,160,1)', 'rgba(192,192,0,1)'];
+        const datasets = cams.map((c, i) => {
+          return {
+            label: c.name,
+            data: labels.map(d => dateMap[d][c.id] || 0),
+            borderColor: colors[i % colors.length],
+            backgroundColor: colors[i % colors.length].replace('1)', '0.1)'),
+            borderWidth: 2,
+            fill: false,
+            tension: 0.4,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: colors[i % colors.length]
+          };
+        });
+
+        if (chartTrends) chartTrends.destroy();
+        const ctx = document.getElementById('chartTrends').getContext('2d');
+        chartTrends = new Chart(ctx, {
+          type: 'line',
+          data: {labels: labels, datasets: datasets},
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {position: 'top', labels: {font: {size: 12}, padding: 15}},
+              title: {display: false}
+            },
+            scales: {
+              y: {beginAtZero: true, ticks: {stepSize: 500}},
+              x: {title: {display: true, text: 'Date'}}
+            }
+          }
+        });
+      }
+
+      async function init(){
+        await updateCameraStatus();
+        await updateDetectionControl();
+        await updatePerMinuteRecords();
+        await loadStats();
+        await drawTodayComparison();
+        await drawTrends();
+      }
+
+      // Refresh data in real-time
+      setInterval(updateCameraStatus, 5000);
+      setInterval(updateDetectionControl, 5000);
+      setInterval(updatePerMinuteRecords, 3000);  // Update per-minute every 3 seconds
+      setInterval(loadStats, 10000);
+
+      document.querySelector('.hamburger').onclick = () => {
+        document.getElementById('sidebar').classList.toggle('open');
+      };
+
+      init();
+    </script>
+  </body>
+</html>

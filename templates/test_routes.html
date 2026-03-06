@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗺️ Route Test - Debug Map</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; width: 100%; font-family: Arial, sans-serif; }
+        
+        body {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            background: #f5f5f5;
+        }
+        
+        #map {
+            grid-column: 1;
+            height: 100vh;
+            background: white;
+        }
+        
+        .controls {
+            grid-column: 2;
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 2px solid #ddd;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .controls h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .info-box {
+            background: #f9f9f9;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 12px;
+            line-height: 1.6;
+            font-family: monospace;
+        }
+        
+        .info-box strong {
+            color: #667eea;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .status.success {
+            background: #c8e6c9;
+            color: #1b5e20;
+        }
+        
+        .status.error {
+            background: #ffcdd2;
+            color: #b71c1c;
+        }
+        
+        .status.warning {
+            background: #fff9c4;
+            color: #f57f17;
+        }
+        
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: #5568d3;
+        }
+        
+        .marker-info {
+            background: #e8ebf7;
+            padding: 8px;
+            border-radius: 5px;
+            margin: 5px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .log-window {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-family: monospace;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+        
+        .log-entry {
+            margin: 3px 0;
+            padding: 2px;
+        }
+        
+        .log-entry.ok { color: #00ff00; }
+        .log-entry.error { color: #ff4444; }
+        .log-entry.warn { color: #ffff00; }
+        .log-entry.info { color: #00aaff; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="controls">
+        <h2>🔧 ROUTE TEST CONTROL</h2>
+        
+        <button onclick="addTestMarker('A')">📍 SET POINT A (Click Map)</button>
+        <button onclick="addTestMarker('B')">📍 SET POINT B (Click Map)</button>
+        <button onclick="calculateTestRoute()">🚗 CALCULATE ROUTE NOW</button>
+        <button onclick="clearAllRoutes()">🗑️ CLEAR ROUTES</button>
+        <button onclick="clearLogs()">📋 CLEAR LOGS</button>
+        
+        <h2 style="margin-top: 20px;">📍 MARKER A</h2>
+        <div class="marker-info">
+            <strong>Position:</strong>
+            <span id="posA">Not set</span>
+        </div>
+        
+        <h2>📍 MARKER B</h2>
+        <div class="marker-info">
+            <strong>Position:</strong>
+            <span id="posB">Not set</span>
+        </div>
+        
+        <h2>🛣️ ROUTE INFO</h2>
+        <div class="info-box" id="routeInfo">
+            <strong>Distance:</strong> <span id="dist">-</span><br>
+            <strong>Duration:</strong> <span id="dur">-</span><br>
+            <strong>Traffic:</strong> <span id="traffic">-</span>
+        </div>
+        
+        <div id="statusDiv"></div>
+        
+        <h2>📊 POLYLINE</h2>
+        <div class="info-box">
+            <strong>Points:</strong> <span id="polylinePoints">0</span><br>
+            <strong>Decoded:</strong> <span id="polylineDecoded">-</span>
+        </div>
+        
+        <h2>🔍 LOG WINDOW</h2>
+        <div class="log-window" id="logWindow"></div>
+    </div>
+
+    <script>
+        let map;
+        let markerA, markerB;
+        const logWindow = document.getElementById('logWindow');
+        const logs = [];
+        const MAX_LOGS = 50;
+        
+        // Logging function
+        function addLog(msg, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = `[${timestamp}] ${msg}`;
+            logs.push({ text: entry, type });
+            
+            // Keep only last 50
+            if (logs.length > MAX_LOGS) logs.shift();
+            
+            // Render
+            logWindow.innerHTML = logs.map(l => 
+                `<div class="log-entry ${l.type}">${l.text}</div>`
+            ).join('');
+            logWindow.scrollTop = logWindow.scrollHeight;
+            
+            // Also console log
+            console.log(msg);
+        }
+        
+        function clearLogs() {
+            logs.length = 0;
+            logWindow.innerHTML = '';
+            addLog('Logs cleared');
+        }
+        
+        function showStatus(msg, type = 'info') {
+            const div = document.getElementById('statusDiv');
+            div.innerHTML = `<div class="status ${type}">${msg}</div>`;
+            addLog(msg, type === 'success' ? 'ok' : type === 'error' ? 'error' : 'warn');
+        }
+        
+        // Initialize map
+        function initMap() {
+            const center = { lat: -6.601357, lng: 106.796838 };
+            addLog('🗺️ Initializing Leaflet map...');
+            
+            map = L.map('map').setView([center.lat, center.lng], 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19
+            }).addTo(map);
+            
+            addLog('✅ Leaflet map initialized');
+            
+            // Click handler
+            map.on('click', (e) => {
+                addLog(`🖱️ Map clicked at ${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+                
+                // Alternate between A and B
+                if (!markerA) {
+                    setMarkerA(e.latlng);
+                    showStatus('✅ Point A SET - Click again for Point B', 'success');
+                } else if (!markerB) {
+                    setMarkerB(e.latlng);
+                    showStatus('✅ Point B SET - Calculating route...', 'success');
+                    setTimeout(() => calculateTestRoute(), 500);
+                } else {
+                    setMarkerA(e.latlng);
+                    showStatus('✅ Point A UPDATE', 'warning');
+                }
+            });
+        }
+        
+        function setMarkerA(latlng) {
+            if (markerA) map.removeLayer(markerA);
+            
+            markerA = L.marker(latlng, {
+                draggable: true,
+                icon: L.divIcon({
+                    html: '<div style="background:#2196F3; color:white; width:35px; height:35px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; box-shadow:0 4px 12px rgba(33,150,243,0.5);">A</div>',
+                    iconSize: [35, 35]
+                })
+            }).addTo(map);
+            
+            markerA.on('dragend', () => {
+                updateMarkerPos('A');
+                setTimeout(() => calculateTestRoute(), 200);
+            });
+            
+            updateMarkerPos('A');
+            addLog(`✅ Marker A placed at ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
+        }
+        
+        function setMarkerB(latlng) {
+            if (markerB) map.removeLayer(markerB);
+            
+            markerB = L.marker(latlng, {
+                draggable: true,
+                icon: L.divIcon({
+                    html: '<div style="background:#f44336; color:white; width:35px; height:35px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; box-shadow:0 4px 12px rgba(244,67,54,0.5);">B</div>',
+                    iconSize: [35, 35]
+                })
+            }).addTo(map);
+            
+            markerB.on('dragend', () => {
+                updateMarkerPos('B');
+                setTimeout(() => calculateTestRoute(), 200);
+            });
+            
+            updateMarkerPos('B');
+            addLog(`✅ Marker B placed at ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
+        }
+        
+        function updateMarkerPos(which) {
+            const marker = which === 'A' ? markerA : markerB;
+            const element = which === 'A' ? document.getElementById('posA') : document.getElementById('posB');
+            
+            if (marker && element) {
+                const pos = marker.getLatLng();
+                element.textContent = `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`;
+            }
+        }
+        
+        function addTestMarker(which) {
+            if (which === 'A' && markerA) {
+                showStatus('Marker A already set. Click map or drag it.', 'warning');
+            } else if (which === 'B' && markerB) {
+                showStatus('Marker B already set. Click map or drag it.', 'warning');
+            } else {
+                showStatus(`Click on map to place Marker ${which}`, 'warning');
+            }
+        }
+        
+        function decodePolyline(encoded) {
+            let points = [];
+            let index = 0, lat = 0, lng = 0;
+            
+            try {
+                while (index < encoded.length) {
+                    let result = 0, shift = 0, b;
+                    do {
+                        b = encoded.charCodeAt(index++) - 63;
+                        result |= (b & 0x1f) << shift;
+                        shift += 5;
+                    } while (b >= 0x20);
+                    lat += ((result & 1) ? ~(result >> 1) : (result >> 1));
+                    
+                    result = 0; shift = 0;
+                    do {
+                        b = encoded.charCodeAt(index++) - 63;
+                        result |= (b & 0x1f) << shift;
+                        shift += 5;
+                    } while (b >= 0x20);
+                    lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
+                    
+                    points.push([lat / 1e5, lng / 1e5]);
+                }
+                addLog(`✅ Decoded ${points.length} waypoints`, 'ok');
+                return points;
+            } catch (e) {
+                addLog(`❌ Polyline decode error: ${e.message}`, 'error');
+                return [];
+            }
+        }
+        
+        async function calculateTestRoute() {
+            if (!markerA || !markerB) {
+                showStatus('❌ Set both markers first!', 'error');
+                return;
+            }
+            
+            const posA = markerA.getLatLng();
+            const posB = markerB.getLatLng();
+            
+            addLog(`📡 Sending route request...`);
+            addLog(`  A: ${posA.lat.toFixed(5)}, ${posA.lng.toFixed(5)}`);
+            addLog(`  B: ${posB.lat.toFixed(5)}, ${posB.lng.toFixed(5)}`);
+            
+            try {
+                const response = await fetch('/api/routes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        origin: { lat: posA.lat, lng: posA.lng },
+                        destination: { lat: posB.lat, lng: posB.lng }
+                    })
+                });
+                
+                if (!response.ok) {
+                    addLog(`❌ API error: ${response.status}`, 'error');
+                    showStatus(`❌ API Error ${response.status}`, 'error');
+                    return;
+                }
+                
+                const data = await response.json();
+                addLog(`✅ API response received`, 'ok');
+                
+                if (!data.primary_route) {
+                    addLog(`❌ No primary_route in response!`, 'error');
+                    showStatus('No route data', 'error');
+                    return;
+                }
+                
+                const route = data.primary_route;
+                
+                // Update display
+                document.getElementById('dist').textContent = route.distance_text || '-';
+                document.getElementById('dur').textContent = route.duration_text || '-';
+                document.getElementById('traffic').textContent = route.traffic_status || '-';
+                
+                const polyline = route.polyline || '';
+                addLog(`📍 Polyline: ${polyline.length} chars`);
+                
+                if (polyline.length < 10) {
+                    addLog(`⚠️  Polyline very short!`, 'warn');
+                    showStatus('⚠️  Polyline too short', 'warning');
+                    return;
+                }
+                
+                // Decode and draw
+                const points = decodePolyline(polyline);
+                document.getElementById('polylinePoints').textContent = points.length;
+                
+                if (points.length === 0) {
+                    addLog(`❌ No points decoded!`, 'error');
+                    showStatus('Failed to decode polyline', 'error');
+                    return;
+                }
+                
+                // Clear old polylines
+                if (window.currentPolyline) {
+                    map.removeLayer(window.currentPolyline);
+                }
+                
+                // Draw polyline
+                try {
+                    const colors = {
+                        'free': '#2e7d32',
+                        'slow': '#f57f17',
+                        'congested': '#b71c1c'
+                    };
+                    const color = colors[route.traffic_status] || '#2196F3';
+                    
+                    window.currentPolyline = L.polyline(points, {
+                        color: color,
+                        weight: 5,
+                        opacity: 0.9,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    }).addTo(map);
+                    
+                    addLog(`✅ Polyline drawn (${points.length} points, ${color})`, 'ok');
+                    document.getElementById('polylineDecoded').textContent = 'YES ✅';
+                    
+                    // Zoom to route
+                    const bounds = window.currentPolyline.getBounds();
+                    if (bounds.isValid()) {
+                        map.fitBounds(bounds.pad(0.1));
+                        addLog('📕 Map zoomed to route', 'info');
+                    }
+                    
+                    showStatus(`✅ Route drawn! Distance: ${route.distance_text}`, 'success');
+                } catch (e) {
+                    addLog(`❌ Draw polyline error: ${e.message}`, 'error');
+                    showStatus(`Error drawing: ${e.message}`, 'error');
+                }
+                
+            } catch (e) {
+                addLog(`❌ Network error: ${e.message}`, 'error');
+                showStatus(`Error: ${e.message}`, 'error');
+            }
+        }
+        
+        function clearAllRoutes() {
+            if (window.currentPolyline) {
+                map.removeLayer(window.currentPolyline);
+                window.currentPolyline = null;
+            }
+            
+            document.getElementById('dist').textContent = '-';
+            document.getElementById('dur').textContent = '-';
+            document.getElementById('traffic').textContent = '-';
+            document.getElementById('polylinePoints').textContent = '0';
+            document.getElementById('polylineDecoded').textContent = '-';
+            
+            addLog('🗑️ Routes cleared');
+            showStatus('Routes cleared', 'warning');
+        }
+        
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            addLog('📄 Page loaded', 'info');
+            initMap();
+            addLog('✅ Ready! Click on map to set markers', 'ok');
+        });
+    </script>
+</body>
+</html>

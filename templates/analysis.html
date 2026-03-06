@@ -1,0 +1,493 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Analysis</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="hamburger">☰</div>
+    <div class="sidebar" id="sidebar">
+      <a href="/">Home</a>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/maps">Maps</a>
+      <a href="/analysis">Analysis</a>
+      <a href="/data">Data Records</a>
+    </div>
+    <div class="content">
+      <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:30px;border-radius:8px;margin-bottom:30px">
+        <h1 style="color:white;margin:0 0 5px 0">Traffic Analytics</h1>
+        <p style="margin:0;opacity:0.9">Analisis Data Lalu Lintas Kota Bogor</p>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:30px">
+        <div>
+          <label style="display:block;margin-bottom:8px"><strong>Pilih Tanggal:</strong></label>
+          <input type="date" id="dateSelect" style="padding:8px 12px;border:1px solid #bdc3c7;border-radius:4px;width:100%;font-size:14px;background:#fff">
+        </div>
+        <div>
+          <label style="display:block;margin-bottom:8px"><strong>Pilih Lokasi:</strong></label>
+          <select id="cameraSelect" style="padding:8px 12px;border:1px solid #bdc3c7;border-radius:4px;width:100%;font-size:14px;background:#fff">
+            <option value="all">Semua Lokasi</option>
+            {% for cam in cameras %}
+            <option value="{{cam['id']}}">{{cam['name']}}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:30px">
+        <div>
+          <h3>Perbandingan Antar CCTV</h3>
+          <div class="chart-container" style="height:350px">
+            <canvas id="chartCCTVComparison"></canvas>
+          </div>
+        </div>
+        <div>
+          <h3>Trend Aktual vs Prediksi</h3>
+          <div class="chart-container" style="height:350px">
+            <canvas id="chartTrendPrediction"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:30px">
+        <h3>📊 Traffic Per-Minute (Last 60 minutes)</h3>
+        <div class="chart-container">
+          <canvas id="chartPerMinute"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>📊 Daily Traffic</h3>
+        <div class="chart-container">
+          <canvas id="chartDaily"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>📊 All Cameras Daily Comparison</h3>
+        <div class="chart-container">
+          <canvas id="chartComparison"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>🚗 Mobil - Actual vs Prediction</h3>
+        <div class="chart-container">
+          <canvas id="chartCarsPrediction"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>🏍️ Motor - Actual vs Prediction</h3>
+        <div class="chart-container">
+          <canvas id="chartBikesPrediction"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>🚌 Bus - Actual vs Prediction</h3>
+        <div class="chart-container">
+          <canvas id="chartBusPrediction"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>🚚 Truk - Actual vs Prediction</h3>
+        <div class="chart-container">
+          <canvas id="chartTruckPrediction"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>📊 3 CCTV Perbandingan Harian - Mobil</h3>
+        <div class="chart-container">
+          <canvas id="chartCarsComparison"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>📊 3 CCTV Perbandingan Harian - Motor</h3>
+        <div class="chart-container">
+          <canvas id="chartBikesComparison"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>📊 3 CCTV Perbandingan Harian - Bus</h3>
+        <div class="chart-container">
+          <canvas id="chartBusComparison"></canvas>
+        </div>
+      </div>
+      <div style="margin-bottom:30px">
+        <h3>📊 3 CCTV Perbandingan Harian - Truk</h3>
+        <div class="chart-container">
+          <canvas id="chartTruckComparison"></canvas>
+        </div>
+      </div>
+    </div>
+    
+    <script>
+      const cams = {{ cameras|tojson }};
+      let chartMinute, chartDaily, chartComparison;
+      let chartCCTVComparison, chartTrendPrediction;
+      
+      async function fetchMinute(camId){
+        const res = await fetch(`/api/minute/${camId}`);
+        return await res.json();
+      }
+      
+      async function fetchDaily(camId){
+        const res = await fetch(`/api/daily/${camId}`);
+        return await res.json();
+      }
+      
+      async function fetchForecast(camId){
+        const res = await fetch(`/api/forecast/${camId}`);
+        return await res.json();
+      }
+
+      async function fetchAllCamerasDaily(){
+        const res = await fetch(`/api/all-cameras-daily`);
+        return await res.json();
+      }
+      
+      async function drawPerMinute(camId){
+        const data = await fetchMinute(camId);
+        const last60 = data.slice(-60);
+        const labels = last60.map(r=>r.timestamp.split(' ')[1]);
+        const cars = last60.map(r=>r.cars||0);
+        const motors = last60.map(r=>r.motorbikes||0);
+        const buses = last60.map(r=>r.buses||0);
+        const trucks = last60.map(r=>r.trucks||0);
+        if (chartMinute) chartMinute.destroy();
+        const ctx = document.getElementById('chartPerMinute').getContext('2d');
+        chartMinute = new Chart(ctx,{
+          type:'line',
+          data:{
+            labels:labels,
+            datasets:[
+              {label:'🚗 Cars',data:cars,borderColor:'rgba(0,102,204,1)',backgroundColor:'rgba(0,102,204,0.1)',borderWidth:2,fill:true,tension:0.4,pointRadius:3},
+              {label:'🏍️ Motorbikes',data:motors,borderColor:'rgba(0,176,80,1)',backgroundColor:'rgba(0,176,80,0.1)',borderWidth:2,fill:true,tension:0.4,pointRadius:3},
+              {label:'🚌 Buses',data:buses,borderColor:'rgba(255,165,0,1)',backgroundColor:'rgba(255,165,0,0.1)',borderWidth:2,fill:true,tension:0.4,pointRadius:3},
+              {label:'🚚 Trucks',data:trucks,borderColor:'rgba(192,0,0,1)',backgroundColor:'rgba(192,0,0,0.1)',borderWidth:2,fill:true,tension:0.4,pointRadius:3}
+            ]
+          },
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:12},padding:15}}},scales:{y:{beginAtZero:true}}}
+        });
+      }
+      
+      async function drawDaily(camId){
+        const data = await fetchDaily(camId);
+        const labels = data.map(r=>r.date);
+        const cars = data.map(r=>r.cars||0);
+        const motors = data.map(r=>r.motorbikes||0);
+        const buses = data.map(r=>r.buses||0);
+        const trucks = data.map(r=>r.trucks||0);
+        if (chartDaily) chartDaily.destroy();
+        const ctx = document.getElementById('chartDaily').getContext('2d');
+        chartDaily = new Chart(ctx,{
+          type:'bar',
+          data:{
+            labels:labels,
+            datasets:[
+              {label:'🚗 Cars',data:cars,backgroundColor:'rgba(0,102,204,0.8)',borderColor:'rgba(0,102,204,1)',borderWidth:1},
+              {label:'🏍️ Motorbikes',data:motors,backgroundColor:'rgba(0,176,80,0.8)',borderColor:'rgba(0,176,80,1)',borderWidth:1},
+              {label:'🚌 Buses',data:buses,backgroundColor:'rgba(255,165,0,0.8)',borderColor:'rgba(255,165,0,1)',borderWidth:1},
+              {label:'🚚 Trucks',data:trucks,backgroundColor:'rgba(192,0,0,0.8)',borderColor:'rgba(192,0,0,1)',borderWidth:1}
+            ]
+          },
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:12},padding:15}}},scales:{y:{stacked:false,beginAtZero:true}}}
+        });
+      }
+      
+      async function drawComparison(){
+        const allData = await fetchAllCamerasDaily();
+        const dateMap = {};
+        cams.forEach((c,i)=>{
+          const camData = allData[c.id] || [];
+          camData.forEach(r=>{
+            if (!dateMap[r.date]) dateMap[r.date]={};
+            dateMap[r.date][c.id] = r.total||0;
+          });
+        });
+        const labels = Object.keys(dateMap).sort();
+        const colors = ['rgba(0,102,204,1)','rgba(0,176,80,1)','rgba(255,165,0,1)','rgba(192,0,0,1)','rgba(112,48,160,1)','rgba(192,192,0,1)'];
+        const datasets = cams.map((c,i)=>{
+          return {
+            label:c.name,
+            data:labels.map(d=>dateMap[d][c.id]||0),
+            borderColor:colors[i%colors.length],
+            backgroundColor:colors[i%colors.length].replace('1)','0.1)'),
+            borderWidth:2,
+            fill:false,
+            tension:0.4,
+            pointRadius:4,
+            pointHoverRadius:6
+          };
+        });
+        if (chartComparison) chartComparison.destroy();
+        const ctx = document.getElementById('chartComparison').getContext('2d');
+        chartComparison = new Chart(ctx,{
+          type:'line',
+          data:{labels:labels,datasets:datasets},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:12},padding:15}}},scales:{y:{beginAtZero:true}}}
+        });
+      }
+
+      // Draw CCTV Comparison - Bar chart showing all 3 locations and all vehicle types
+      async function drawCCTVComparison(){
+        const allData = await fetchAllCamerasDaily();
+        
+        // Get the latest day data for each camera
+        const latestData = {};
+        cams.forEach(c => {
+          const camData = allData[c.id] || [];
+          if (camData.length > 0) {
+            const latest = camData[camData.length - 1];
+            latestData[c.id] = {
+              cars: latest.cars || 0,
+              motorbikes: latest.motorbikes || 0,
+              buses: latest.buses || 0,
+              trucks: latest.trucks || 0
+            };
+          } else {
+            latestData[c.id] = {cars: 0, motorbikes: 0, buses: 0, trucks: 0};
+          }
+        });
+        
+        if (chartCCTVComparison) chartCCTVComparison.destroy();
+        const ctx = document.getElementById('chartCCTVComparison').getContext('2d');
+        chartCCTVComparison = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: cams.map(c => c.name),
+            datasets: [
+              {label: 'Mobil', data: cams.map(c => latestData[c.id].cars), backgroundColor: 'rgba(0,102,204,0.8)', borderColor: 'rgba(0,102,204,1)', borderWidth: 1},
+              {label: 'Motor', data: cams.map(c => latestData[c.id].motorbikes), backgroundColor: 'rgba(0,176,80,0.8)', borderColor: 'rgba(0,176,80,1)', borderWidth: 1},
+              {label: 'Truk', data: cams.map(c => latestData[c.id].trucks), backgroundColor: 'rgba(192,0,0,0.8)', borderColor: 'rgba(192,0,0,1)', borderWidth: 1},
+              {label: 'Bis', data: cams.map(c => latestData[c.id].buses), backgroundColor: 'rgba(255,165,0,0.8)', borderColor: 'rgba(255,165,0,1)', borderWidth: 1}
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {legend: {position: 'top', labels: {font: {size: 12}, padding: 15}}},
+            scales: {y: {beginAtZero: true, stacked: false}}
+          }
+        });
+      }
+
+      // Draw Trend Prediction - Line chart showing actual vs prediction
+      async function drawTrendPrediction(camId){
+        const data = await fetchDaily(camId);
+        const forecast = await fetchForecast(camId);
+        
+        // Use all vehicle types for trend
+        const labels = data.map(r => r.date);
+        const totals = data.map(r => (r.cars || 0) + (r.motorbikes || 0) + (r.buses || 0) + (r.trucks || 0));
+        
+        // Get forecast total
+        let forecastTotal = 0;
+        if (forecast && forecast.forecast) {
+          forecastTotal = forecast.forecast.reduce((sum, item) => sum + item.value, 0);
+        }
+        
+        labels.push(forecast.date || 'Next Day');
+        totals.push(null);
+        
+        const predictionLabels = [...labels];
+        const predictionValues = [...totals];
+        if (forecastTotal > 0) {
+          predictionValues[predictionValues.length-1] = forecastTotal;
+        }
+        
+        if (chartTrendPrediction) chartTrendPrediction.destroy();
+        const ctx = document.getElementById('chartTrendPrediction').getContext('2d');
+        chartTrendPrediction = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: predictionLabels,
+            datasets: [
+              {
+                label: 'Aktual',
+                data: totals.slice(0,-1).concat([null]),
+                borderColor: 'rgba(0,102,204,1)',
+                backgroundColor: 'rgba(0,102,204,0.1)',
+                borderWidth: 3,
+                pointRadius: 5,
+                pointBackgroundColor: 'rgba(0,102,204,1)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                tension: 0.4,
+                fill: true
+              },
+              {
+                label: 'Prediksi',
+                data: [...new Array(totals.length-1), null, ...predictionValues.slice(-1)],
+                borderColor: 'rgba(255,99,132,1)',
+                borderDash: [5,5],
+                borderWidth: 2,
+                pointRadius: 6,
+                pointBackgroundColor: 'rgba(255,99,132,1)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                tension: 0.4,
+                fill: false
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {legend: {position: 'top', labels: {font: {size: 12}, padding: 15}}},
+            scales: {y: {beginAtZero: true}}
+          }
+        });
+      }
+
+      // Draw actual vs prediction charts
+      async function drawVehiclePrediction(camId, vehicleType, chartId, chartVar){
+        const data = await fetchDaily(camId);
+        const forecast = await fetchForecast(camId);
+        
+        const labels = data.map(r=>r.date);
+        const values = data.map(r=>r[vehicleType]||0);
+        
+        // Add forecast as last point
+        let forecastValue = 0;
+        if (forecast && forecast.forecast){
+          const item = forecast.forecast.find(f => f.type === vehicleType);
+          if (item) forecastValue = item.value;
+        }
+        
+        labels.push(forecast.date || 'Next Day');
+        values.push(null);
+        
+        const predictionLabels = [...labels];
+        const predictionValues = [...values];
+        if (forecastValue > 0) {
+          predictionValues[predictionValues.length-1] = forecastValue;
+        }
+        
+        const ctx = document.getElementById(chartId).getContext('2d');
+        if (window[chartVar]) window[chartVar].destroy();
+        
+        window[chartVar] = new Chart(ctx,{
+          type:'line',
+          data:{
+            labels:predictionLabels,
+            datasets:[
+              {
+                label:'📊 Actual Data',
+                data:values.slice(0,-1).concat([null]),
+                borderColor:'rgba(0,102,204,1)',
+                backgroundColor:'rgba(0,102,204,0.1)',
+                borderWidth:3,
+                pointRadius:5,
+                pointBackgroundColor:'rgba(0,102,204,1)',
+                pointBorderColor:'#fff',
+                pointBorderWidth:2,
+                tension:0.4,
+                fill:true
+              },
+              {
+                label:'🔮 Prediction',
+                data:[...new Array(values.length-1), null, ...predictionValues.slice(-1)],
+                borderColor:'rgba(255,99,132,1)',
+                borderDash:[5,5],
+                borderWidth:2,
+                pointRadius:6,
+                pointBackgroundColor:'rgba(255,99,132,1)',
+                pointBorderColor:'#fff',
+                pointBorderWidth:2,
+                tension:0.4,
+                fill:false
+              }
+            ]
+          },
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:12},padding:15}}},scales:{y:{beginAtZero:true}}}
+        });
+      }
+
+      // Draw 3 cameras comparison by vehicle type
+      async function draw3CamerasComparison(vehicleType, chartId, chartVar){
+        const allData = await fetchAllCamerasDaily();
+        const dateMap = {};
+        
+        cams.forEach(c => {
+          const camData = allData[c.id] || [];
+          camData.forEach(r => {
+            if (!dateMap[r.date]) dateMap[r.date] = {};
+            dateMap[r.date][c.id] = r[vehicleType] || 0;
+          });
+        });
+        
+        const labels = Object.keys(dateMap).sort();
+        const colors = ['rgba(0,102,204,1)','rgba(0,176,80,1)','rgba(255,165,0,1)'];
+        const datasets = cams.map((c,i) => {
+          return {
+            label: c.name,
+            data: labels.map(d => dateMap[d][c.id] || 0),
+            borderColor: colors[i % colors.length],
+            backgroundColor: colors[i % colors.length].replace('1)', '0.1)'),
+            borderWidth: 2,
+            tension: 0.4,
+            fill: true,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            pointBackgroundColor: colors[i % colors.length],
+            pointBorderColor: '#fff',
+            pointBorderWidth: 1
+          };
+        });
+        
+        const ctx = document.getElementById(chartId).getContext('2d');
+        if (window[chartVar]) window[chartVar].destroy();
+        
+        window[chartVar] = new Chart(ctx, {
+          type: 'line',
+          data: {labels: labels, datasets: datasets},
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {legend: {position: 'top',labels:{font:{size:12},padding:15}}},
+            scales: {y: {beginAtZero: true}}
+          }
+        });
+      }
+      
+      async function draw(){
+        if (!cams || cams.length===0) return;
+        const c0 = cams[0].id;
+        await drawCCTVComparison();
+        await drawTrendPrediction(c0);
+        await drawPerMinute(c0);
+        await drawDaily(c0);
+        await drawComparison();
+      }
+      
+      document.getElementById('cameraSelect').addEventListener('change', async (e)=>{
+        const camId = e.target.value;
+        if (camId === 'all') {
+          await drawCCTVComparison();
+        }
+        await drawTrendPrediction(camId === 'all' ? cams[0].id : camId);
+        await drawPerMinute(camId === 'all' ? cams[0].id : camId);
+        await drawDaily(camId === 'all' ? cams[0].id : camId);
+      });
+
+      document.getElementById('dateSelect').addEventListener('change', async (e) => {
+        // Date selector for future enhancement
+        const camId = document.getElementById('cameraSelect').value;
+        if (camId === 'all') {
+          await drawCCTVComparison();
+        }
+        await drawTrendPrediction(camId === 'all' ? cams[0].id : camId);
+      });
+      
+      document.querySelector('.hamburger').onclick = ()=>{
+        document.getElementById('sidebar').classList.toggle('open');
+      }
+      
+      // Set today's date in date picker
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('dateSelect').value = today;
+      
+      draw();
+    </script>
+  </body>
+</html>

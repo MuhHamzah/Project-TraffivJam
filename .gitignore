@@ -26,18 +26,17 @@ build/
 Thumbs.db
 
 # Data & Logs
-*.csv
-# keep the data directory itself so it can be added, but ignore its contents by default
-!data/
-data/*
+# CSV files are tracked (needed for dataset)
 
 logs/
 *.log
 
-# Large model files
-*.pt
-*.pth
-*.onnx
+# Large model files (ignored by default, but specific weights can be tracked)
+#*.pt
+#*.pth
+#*.onnx
+!yolov8n.pt
+!yolov8m.pt
 
 # Environment variables
 .env
